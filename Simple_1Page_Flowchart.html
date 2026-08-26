@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustLens - Simple 1-Page Project Flowchart</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --border: #1f2937;
+      --accent: #3b82f6;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.5rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 850px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      color: #fff;
+      margin-bottom: 0.2rem;
+    }
+
+    p.subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .btn-print {
+      margin-top: 0.8rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .mermaid-box {
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .step-card {
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .step-num {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-weight: bold;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.4rem;
+    }
+
+    .step-card h3 {
+      font-size: 0.95rem;
+      color: #fff;
+      margin-bottom: 0.4rem;
+    }
+
+    .step-card p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    @media print {
+      body { background: #fff; color: #000; padding: 0; }
+      .page { border: none; box-shadow: none; padding: 0; background: #fff; }
+      .btn-print { display: none; }
+      h1 { color: #000; }
+      p.subtitle, .step-card p { color: #444; }
+      .mermaid-box, .step-card { background: #fff; border-color: #ccc; }
+      .step-card h3 { color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>🛡️ TrustLens - Simple Project Flowchart</h1>
+      <p class="subtitle">Phishing Detection System for URLs & Messages</p>
+      <button class="btn-print" onclick="window.print()">🖨️ Print / Save 1-Page PDF</button>
+    </header>
+
+    <div class="mermaid-box">
+      <pre class="mermaid">
+flowchart TD
+    A["👤 STEP 1: USER INPUT<br/>(Paste URL or Message)"] --> B["⚙️ STEP 2: FEATURE EXTRACTION<br/>(URL Structure + Text Keywords)"]
+    B --> C["🤖 STEP 3: ML MODEL & WHITELIST<br/>(Random Forest Models + Safe Domain Check)"]
+    C --> D["🔍 STEP 4: SHAP EXPLAINER<br/>(Generates Plain-English Reasons)"]
+    D --> E["📊 STEP 5: FINAL VERDICT<br/>(Safe / Suspicious / Phishing)"]
+      </pre>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step-card">
+        <span class="step-num">STEP 1</span>
+        <h3>User Input</h3>
+        <p>User enters a web link or message text into the React Threat Console.</p>
+      </div>
+
+      <div class="step-card">
+        <span class="step-num">STEP 2</span>
+        <h3>Feature Extraction</h3>
+        <p>Backend checks 13 URL features (HTTPS, TLD, length) and text keywords (TF-IDF).</p>
+      </div>
+
+      <div class="step-card">
+        <span class="step-num">STEP 3</span>
+        <h3>AI Analysis</h3>
+        <p>Random Forest models compute risk scores. Known safe domains are whitelisted.</p>
+      </div>
+
+      <div class="step-card">
+        <span class="step-num">STEP 4</span>
+        <h3>Explainable AI (SHAP)</h3>
+        <p>Identifies exact reasons (e.g. "URL shortener used", "Requests OTP").</p>
+      </div>
+
+      <div class="step-card">
+        <span class="step-num">STEP 5</span>
+        <h3>Result & History</h3>
+        <p>Displays risk badge, reasons & advice, then saves record to MongoDB.</p>
+      </div>
+
+      <div class="step-card" style="background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);">
+        <span class="step-num" style="background: #10b981;">KEY ADVANTAGE</span>
+        <h3>Why it Works</h3>
+        <p>Combines multi-modal inputs, domain whitelisting, and human-readable XAI.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  </script>
+</body>
+</html>
