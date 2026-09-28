@@ -30,3 +30,9 @@ backend/data/
 # Temp
 *.log
 *.tmp
+
+# Presentation / review decks (kept locally, not in the code repo)
+*.pptx
+*.html
+college_logo.jpg
+cyber_shield.png
