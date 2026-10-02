@@ -29,5 +29,14 @@ export function formatApiError(err) {
       .join(" ");
   }
   if (detail && typeof detail.msg === "string") return detail.msg;
+  if (detail && typeof detail === "object") {
+    // FastAPI request-validation shape: { detail: { field: ["msg", ...] } }
+    const parts = Object.entries(detail).flatMap(([field, msgs]) =>
+      (Array.isArray(msgs) ? msgs : [msgs]).map(
+        (m) => `${field}: ${typeof m === "string" ? m : m?.msg ?? JSON.stringify(m)}`,
+      ),
+    );
+    if (parts.length) return parts.join(" ");
+  }
   return String(detail);
 }

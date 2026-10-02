@@ -37,6 +37,11 @@ RECOMMENDATIONS = {
 
 MODEL_DIR = Path(__file__).parent / "models"
 
+# ---------- Reputation layer ----------
+# Reputation can only raise risk, never lower it, and only by a capped amount.
+# See reputation.py for the reasoning behind the weights.
+MAX_REPUTATION_BUMP: float = 0.40
+
 
 # ---------- Plain-language mappers ----------
 def _url_reason_for_feature(name: str, value: float) -> str | None:
@@ -238,7 +243,13 @@ class ScamSensePredictor:
         return risk, _map_verdict(risk)
 
     # ---------- Public API ----------
-    def predict(self, url: str, message: str) -> dict:
+    def predict(self, url: str, message: str, reputation: dict | None = None) -> dict:
+        """Score a URL and/or message.
+
+        `reputation` is the already-fetched result of reputation.analyse(). It is
+        passed in rather than looked up here so this stays synchronous and the
+        network calls can run concurrently with the model, outside the executor.
+        """
         self.ensure_ready()
         url_prob, url_reasons, url_shap = self._url_prob_and_reasons(url)
         msg_prob, msg_reasons, msg_shap = self._message_prob_and_reasons(message)
@@ -248,35 +259,89 @@ class ScamSensePredictor:
 
         # Whitelist override: if the URL domain is a known trusted domain,
         # cap the URL contribution at safe level regardless of path keywords.
+        trusted_domain = ""
         if has_url:
             reg_domain = _get_registered_domain(url)
             if reg_domain in KNOWN_SAFE_DOMAINS:
                 url_prob = min(url_prob, SAFE_THRESHOLD - 0.01)
                 url_reasons = []
+                # Drop the SHAP breakdown too, otherwise the UI shows "Safe"
+                # next to "suspicious keywords in URL (+19%)" for the same link.
+                url_shap = []
+                trusted_domain = reg_domain
 
-        risk, verdict = self._compute_risk_and_verdict(url_prob, msg_prob, has_url, has_msg)
-        if not has_url:
-            url_reasons = []
-            url_shap = []
-        if not has_msg:
-            msg_reasons = []
-            msg_shap = []
+        ml_risk, _ = self._compute_risk_and_verdict(url_prob, msg_prob, has_url, has_msg)
 
-        return {
-            "risk_score": round(risk, 4),
-            "verdict": verdict,
+        result = {
+            "risk_score": round(ml_risk, 4),
+            "verdict": _map_verdict(ml_risk),
             "url_reasons": url_reasons,
             "message_reasons": msg_reasons,
-            "recommendation": RECOMMENDATIONS[verdict],
+            "recommendation": RECOMMENDATIONS[_map_verdict(ml_risk)],
             "url_probability": round(url_prob, 4),
             "message_probability": round(msg_prob, 4),
             "url_shap_features": url_shap,
             "message_shap_features": msg_shap,
+            "trusted_domain": trusted_domain,
+            "ml_risk_score": round(ml_risk, 4),
+            "reputation_bump": 0.0,
+            "reputation": {},
             "thresholds": {
                 "safe": SAFE_THRESHOLD,
                 "phishing": PHISHING_THRESHOLD,
             },
         }
+
+        if not has_url:
+            result["url_reasons"] = []
+            result["url_shap_features"] = []
+        if not has_msg:
+            result["message_reasons"] = []
+            result["message_shap_features"] = []
+
+        return self.apply_reputation(result, reputation)
+
+    # ---------- Reputation layer ----------
+    def apply_reputation(self, result: dict, reputation: dict | None) -> dict:
+        """Fold reputation evidence into an existing result.
+
+        Deliberately separate from predict() and free of any model work: the
+        caller can run the (slow) SHAP explanation and the (slow) network
+        lookups concurrently, then combine them here without paying for SHAP
+        twice.
+        """
+        rep = reputation or {}
+        signals = rep.get("signals") or []
+        # Never trust a caller-supplied bump; clamp it.
+        bump = max(0.0, min(float(rep.get("bump") or 0.0), MAX_REPUTATION_BUMP))
+
+        ml_risk = float(result.get("ml_risk_score", result.get("risk_score", 0.0)))
+        risk = min(1.0, ml_risk + bump)
+
+        # A trusted domain keeps its whitelist ceiling even if a reputation
+        # source objects, so a false positive cannot condemn amazon.com.
+        if result.get("trusted_domain"):
+            risk = min(risk, SAFE_THRESHOLD - 0.01)
+
+        verdict = _map_verdict(risk)
+
+        # Reputation reasons are appended to the URL reasons, since they are
+        # evidence about the URL. They then flow into the explanation, the
+        # translation and the CSV export without further wiring.
+        reasons = [s["label"] for s in signals if s.get("label")]
+        merged = list(result.get("url_reasons") or [])
+        for label in reasons:
+            if label not in merged:
+                merged.append(label)
+
+        result["risk_score"] = round(risk, 4)
+        result["ml_risk_score"] = round(ml_risk, 4)
+        result["reputation_bump"] = round(bump, 4)
+        result["reputation"] = rep
+        result["url_reasons"] = merged[: TOP_K_REASONS + 3]
+        result["verdict"] = verdict
+        result["recommendation"] = RECOMMENDATIONS[verdict]
+        return result
 
 
 predictor = ScamSensePredictor()

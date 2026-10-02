@@ -65,7 +65,8 @@
     "dev": "craco start",
     "start": "craco start",
     "build": "craco build",
-    "test": "craco test"
+    "test": "craco test",
+    "lint:scope": "eslint -c eslint.scope-check.config.mjs --no-config-lookup src/components/ResultCard.jsx src/components/DomainReputationPanel.jsx src/pages/Dashboard.jsx"
   },
   "browserslist": {
     "production": [

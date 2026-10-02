@@ -1,4 +1,5 @@
-import { ShieldCheck, AlertTriangle, ShieldX, BadgeInfo, ExternalLink, FileText, Scan, Info } from "lucide-react";
+import { ShieldCheck, AlertTriangle, ShieldX, BadgeInfo, ExternalLink, FileText, Scan, Info, Languages, Loader2 } from "lucide-react";
+import DomainReputationPanel from "./DomainReputationPanel";
 
 const VERDICTS = {
   Safe: {
@@ -64,6 +65,32 @@ const VERDICTS = {
 };
 
 function getRiskExplanation(v, percent, result) {
+  const base = buildExplanation(v, percent, result);
+  const ml = result?.ml_risk_score;
+  const bump = result?.reputation_bump ?? 0;
+  if (typeof ml !== "number" || !bump) return base;
+
+  const rep = result?.reputation || {};
+  const signals = rep.signals || [];
+  const causes = signals
+    .map((s) => s.label.replace(/\.$/, "").toLowerCase())
+    .slice(0, 2);
+
+  const arithmetic =
+    `The ML model scored this ${Math.round(ml * 100)}%; domain reputation added ` +
+    `${Math.round(bump * 100)} points (${causes.length ? causes.join(" and ") : "external source data"}), ` +
+    `giving the final ${percent}% above.`;
+
+  if (ml < (result?.thresholds?.phishing ?? 0.58) && v === "Phishing") {
+    return (
+      `${arithmetic} Reputation evidence was the deciding factor here, so this result rests on ` +
+      `external sources rather than on the model's own features alone.`
+    );
+  }
+  return `${base} ${arithmetic}`;
+}
+
+function buildExplanation(v, percent, result) {
   const urlReasons = result?.url_reasons || [];
   const msgReasons = result?.message_reasons || [];
   const urlShap = result?.url_shap_features || [];
@@ -145,16 +172,33 @@ function getRiskExplanation(v, percent, result) {
   return "Unable to determine risk level for this input.";
 }
 
-export default function ResultCard({ result }) {
+export default function ResultCard({
+  result,
+  languages = [],
+  onTranslate = null,
+  translating = false,
+  translation = null,
+  translationError = "",
+  translationRef = null,
+}) {
   const v = result?.verdict || "Unknown";
   const config = VERDICTS[v] || VERDICTS.Unknown;
   const Icon = config.icon;
   const score = Math.max(0, Math.min(1, result?.risk_score ?? 0));
   const percent = Math.round(score * 100);
-  const reasons = result?.reasons || [];
   const extractedText = result?.extracted_text;
   const urlShap = result?.url_shap_features || [];
   const msgShap = result?.message_shap_features || [];
+  const trustedDomain = result?.trusted_domain || "";
+  const qrUrl = result?.qr_url || "";
+  const qrPayloads = result?.qr_payloads || [];
+  // The translator sends URL reasons followed by message reasons, so the
+  // originals line up with this exact order for the English fallback under
+  // each translated line.
+  const allReasons = [
+    ...(result?.url_reasons || []),
+    ...(result?.message_reasons || []),
+  ].filter(Boolean);
 
   const circumference = 2 * Math.PI * 54;
   const dashoffset = circumference - score * circumference;
@@ -173,7 +217,139 @@ export default function ResultCard({ result }) {
             <div className="text-[10px] font-bold uppercase tracking-widest text-white/70">Verdict</div>
             <div className="text-2xl font-black text-white leading-none mt-1">{v}</div>
           </div>
+          {trustedDomain && (
+            <span
+              title="Matched a trusted-domain whitelist, so URL path keywords were ignored"
+              className="flex-none rounded-full bg-white/20 backdrop-blur-sm border border-white/30 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
+            >
+              Trusted · {trustedDomain}
+            </span>
+          )}
         </div>
+
+        {/* Translation */}
+        {onTranslate && (result?.message_content?.trim() || result?.message_preview?.trim() || result?.extracted_text?.trim()) && (
+          <div className="px-6 pt-5">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Languages className="h-4 w-4 text-slate-500" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                  Translate this message
+                </span>
+                {result?.detected_language && (
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                    Detected: {result.detected_language.toUpperCase()}
+                  </span>
+                )}
+                {result?.url_from_message && (
+                  <span
+                    title="A link inside this message was extracted and checked"
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"
+                  >
+                    Link checked
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={onTranslate}
+                disabled={translating}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700 disabled:opacity-60"
+              >
+                {translating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+                {translating ? "Translating…" : "Choose a language"}
+              </button>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                Pick the language you want to read this in. The message, the reasons and the
+                advice are all converted. The verdict itself never changes.
+              </p>
+            </div>
+
+            {translationError && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                {translationError}
+              </div>
+            )}
+
+            {translation && (
+              <div ref={translationRef} className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="font-bold text-slate-500">
+                    {translation.source_language_name}
+                  </span>
+                  <span className="text-slate-300">→</span>
+                  <span className="font-bold text-slate-900">
+                    {translation.target_language_name}
+                  </span>
+                  {translation.skipped && (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                      Already in this language
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-800">
+                  {translation.translated_text}
+                </div>
+
+                {(translation.translated_verdict ||
+                  translation.translated_reasons?.length ||
+                  translation.translated_recommendation) && (
+                  <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      The explanation above, in {translation.target_language_name}
+                    </div>
+
+                    {translation.translated_verdict && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-bold text-slate-500">Verdict:</span>
+                        <span className="font-bold text-slate-900">
+                          {translation.translated_verdict}
+                        </span>
+                        <span className="text-slate-400">
+                          (model verdict: {result?.verdict})
+                        </span>
+                      </div>
+                    )}
+
+                    {translation.translated_reasons?.length > 0 && (
+                      <ul className="space-y-1.5">
+                        {translation.translated_reasons.map((r, i) => (
+                          <li
+                            key={i}
+                            className="flex gap-2 text-xs leading-relaxed text-slate-700"
+                          >
+                            <span className="text-slate-300">&bull;</span>
+                            <span>
+                              {r}
+                              {allReasons[i] && (
+                                <span className="block text-[10px] text-slate-400">
+                                  {allReasons[i]}
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {translation.translated_recommendation && (
+                      <div className="rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-800">
+                        <span className="font-bold">What to do: </span>
+                        {translation.translated_recommendation}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                  {translation.note} Machine translation can distort warnings, so rely on the
+                  English verdict above rather than this text.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="p-6 space-y-6">
           {/* Score + extracted text row */}
@@ -325,32 +501,35 @@ export default function ResultCard({ result }) {
             </div>
           )}
 
-          {/* Reason list */}
-          {reasons.length > 0 && (
+          {/* Domain Reputation */}
+          <DomainReputationPanel result={result} />
+
+          {/* QR code payload */}
+          {(qrUrl || (qrPayloads && qrPayloads.length > 0)) && (
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-3">Explainability</div>
-              <ul className="space-y-2">
-                {reasons.map((r, i) => {
-                  const isPos = r.type === "positive";
-                  const labelColor = isPos ? "text-emerald-600 bg-emerald-50 border-emerald-200" : "text-rose-600 bg-rose-50 border-rose-200";
-                  const barColor = isPos
-                    ? "bg-gradient-to-r from-emerald-400 to-emerald-500"
-                    : "bg-gradient-to-r from-rose-400 to-rose-500";
-                  const weight = Math.round((r.weight ?? 0.5) * 100);
-                  return (
-                    <li key={i} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-2.5 opacity-0 animate-fade-in" style={{ animationDelay: `${i * 0.08}s` }}>
-                      <span className={`text-[10px] font-bold uppercase w-16 flex-none px-2 py-0.5 rounded-md border ${labelColor}`}>
-                        {isPos ? "Risk ↑" : "Safe ↓"}
-                      </span>
-                      <span className="text-xs text-gray-700 flex-1 font-medium">{r.reason}</span>
-                      <span className="text-[10px] font-mono text-gray-400 flex-none">{weight}%</span>
-                      <div className="w-16 h-1.5 rounded-full bg-gray-200 overflow-hidden flex-none">
-                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${weight}%` }} />
-                      </div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">QR code</div>
+                {!qrUrl && (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                    No link inside
+                  </span>
+                )}
+              </div>
+              {qrUrl ? (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">Decoded link</div>
+                  <div className="font-mono text-sm text-gray-800 break-all">{qrUrl}</div>
+                </div>
+              ) : null}
+              {qrPayloads && qrPayloads.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {qrPayloads.map((p, i) => (
+                    <li key={i} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-600 break-all">
+                      {p}
                     </li>
-                  );
-                })}
-              </ul>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
